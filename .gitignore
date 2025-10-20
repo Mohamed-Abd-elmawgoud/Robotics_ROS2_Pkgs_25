@@ -19,3 +19,6 @@ Thumbs.db
 # Python cache
 __pycache__/
 *.egg-info/
+
+
+src/robotics/robotics/joint_state_to_trajectory.py
