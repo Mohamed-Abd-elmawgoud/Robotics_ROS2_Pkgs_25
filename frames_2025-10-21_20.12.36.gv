@@ -1,0 +1,14 @@
+digraph G {
+"Base_Link" -> "Rotating_Waste"[label=" Broadcaster: default_authority\nAverage rate: 20.202\nBuffer length: 4.95\nMost recent transform: 161.49\nOldest transform: 156.54\n"];
+"world" -> "Base_Link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"Rotating_Waste" -> "Arm_1"[label=" Broadcaster: default_authority\nAverage rate: 20.202\nBuffer length: 4.95\nMost recent transform: 161.49\nOldest transform: 156.54\n"];
+"Arm_1" -> "Arm_2"[label=" Broadcaster: default_authority\nAverage rate: 20.202\nBuffer length: 4.95\nMost recent transform: 161.49\nOldest transform: 156.54\n"];
+"Arm_2" -> "Arm_3"[label=" Broadcaster: default_authority\nAverage rate: 20.202\nBuffer length: 4.95\nMost recent transform: 161.49\nOldest transform: 156.54\n"];
+"Arm_3" -> "Gripper"[label=" Broadcaster: default_authority\nAverage rate: 20.202\nBuffer length: 4.95\nMost recent transform: 161.49\nOldest transform: 156.54\n"];
+"Gripper" -> "EE_frame"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"base_link" -> "end_effector"[label=" Broadcaster: default_authority\nAverage rate: 1.25\nBuffer length: 4.0\nMost recent transform: 1761066755.3147\nOldest transform: 1761066751.314449\n"];
+edge [style=invis];
+ subgraph cluster_legend { style=bold; color=black; label ="view_frames Result";
+"Recorded at time: 1761066756.0815475"[ shape=plaintext ] ;
+}->"base_link";
+}

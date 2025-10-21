@@ -13,12 +13,12 @@ import os
 def generate_launch_description():
     pkg_path = get_package_share_directory('robotics')
     pkg_share_parent = os.path.dirname(pkg_path)
-    
+
+    # Consistent sim time parameter for all nodes
     use_sim_time = LaunchConfiguration('use_sim_time', default=True)
-    
+
     urdf_file = os.path.join(pkg_path, 'urdf', 'robot.urdf')
     robot_controllers = os.path.join(pkg_path, 'config', 'controllers.yaml')
-    
     robot_description = {'robot_description': open(urdf_file).read()}
 
     set_gz_env = SetEnvironmentVariable(
@@ -26,6 +26,7 @@ def generate_launch_description():
         value=f"{pkg_share_parent}:{os.environ.get('GZ_SIM_RESOURCE_PATH', '')}"
     )
 
+    # --- Core Nodes ---
     node_robot_state_publisher = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
@@ -38,42 +39,71 @@ def generate_launch_description():
         executable='create',
         output='screen',
         arguments=['-topic', 'robot_description', '-name', 'robotics', '-allow_renaming', 'true'],
+        parameters=[{'use_sim_time': use_sim_time}],
     )
 
     joint_state_broadcaster_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_state_broadcaster', '--controller-manager', '/controller_manager', 
-                   '--param-file', robot_controllers],
+        arguments=[
+            'joint_state_broadcaster',
+            '--controller-manager', '/controller_manager',
+            '--param-file', robot_controllers
+        ],
+        parameters=[{'use_sim_time': use_sim_time}],
     )
 
     joint_trajectory_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_trajectory_controller', '--controller-manager', '/controller_manager',
-                   '--param-file', robot_controllers],
+        arguments=[
+            'joint_trajectory_controller',
+            '--controller-manager', '/controller_manager',
+            '--param-file', robot_controllers
+        ],
+        parameters=[{'use_sim_time': use_sim_time}],
     )
 
     bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
         arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock'],
-        output='screen'
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
     )
 
-    joint_state_publisher_gui = Node(
-    package='joint_state_publisher_gui',
-    executable='joint_state_publisher_gui',
-    output='screen',
-    remappings=[('/joint_states', '/joint_state_commands')],
+    # --- Custom Robotics Nodes ---
+    tf_to_pose_node = Node(
+        package='robotics',
+        executable='tf_to_pose_publisher',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
     )
+
+    joint_trajectory_node = Node(
+        package='robotics',
+        executable='joint_state_to_trajectory',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
+    fwd_kinematics_node = Node(
+        package='robotics',
+        executable='fwd_kinematics',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
+    # --- Launch Description ---
     return LaunchDescription([
         set_gz_env,
-        joint_state_publisher_gui,
-        # Set environment for Gazebo
+        tf_to_pose_node,
+        joint_trajectory_node,
+        fwd_kinematics_node,
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                [PathJoinSubstitution([FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])]),
+                [PathJoinSubstitution([FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])]
+            ),
             launch_arguments=[('gz_args', [' -r -v 4 empty.sdf'])],
         ),
         RegisterEventHandler(
@@ -91,5 +121,5 @@ def generate_launch_description():
         bridge,
         node_robot_state_publisher,
         gz_spawn_entity,
-        DeclareLaunchArgument('use_sim_time', default_value=use_sim_time),
+        DeclareLaunchArgument('use_sim_time', default_value='true'),
     ])
