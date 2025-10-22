@@ -1,0 +1,13 @@
+digraph G {
+"Base_Link" -> "EE_frame"[label=" Broadcaster: default_authority\nAverage rate: 1.36\nBuffer length: 2.942\nMost recent transform: 235.351\nOldest transform: 232.409\n"];
+"world" -> "Base_Link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"Base_Link" -> "Rotating_Waste"[label=" Broadcaster: default_authority\nAverage rate: 20.161\nBuffer length: 4.96\nMost recent transform: 235.94\nOldest transform: 230.98\n"];
+"Rotating_Waste" -> "Arm_1"[label=" Broadcaster: default_authority\nAverage rate: 20.161\nBuffer length: 4.96\nMost recent transform: 235.94\nOldest transform: 230.98\n"];
+"Arm_1" -> "Arm_2"[label=" Broadcaster: default_authority\nAverage rate: 20.161\nBuffer length: 4.96\nMost recent transform: 235.94\nOldest transform: 230.98\n"];
+"Arm_2" -> "Arm_3"[label=" Broadcaster: default_authority\nAverage rate: 20.161\nBuffer length: 4.96\nMost recent transform: 235.94\nOldest transform: 230.98\n"];
+"Arm_3" -> "Gripper"[label=" Broadcaster: default_authority\nAverage rate: 20.161\nBuffer length: 4.96\nMost recent transform: 235.94\nOldest transform: 230.98\n"];
+edge [style=invis];
+ subgraph cluster_legend { style=bold; color=black; label ="view_frames Result";
+"Recorded at time: 1761128718.7225149"[ shape=plaintext ] ;
+}->"world";
+}

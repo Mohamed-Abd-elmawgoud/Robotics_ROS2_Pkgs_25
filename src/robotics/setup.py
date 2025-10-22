@@ -55,6 +55,7 @@ setup(
             'joint_state_to_trajectory=robotics.joint_state_to_trajectory:main',
             'fwd_kinematics=robotics.fwd_kinematics:main',
             'tf_to_pose_publisher=robotics.tf_to_pose_publisher:main',
+            'joint_angles_publisher=robotics.joint_angles_publisher:main',
 
         ],
         
