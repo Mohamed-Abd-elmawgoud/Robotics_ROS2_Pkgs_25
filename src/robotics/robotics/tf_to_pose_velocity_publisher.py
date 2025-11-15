@@ -7,13 +7,13 @@ import tf2_ros
 
 class TFtoPosePublisher(Node):
     def __init__(self):
-        super().__init__('tf_to_pose_publisher')
+        super().__init__('tf_to_pose_velocity_publisher')
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         self.pose_pub = self.create_publisher(PoseStamped, '/ee_pose', 10)
         self.timer = self.create_timer(0.1, self.publish_pose)  # 10 Hz
 
-        self.parent_frame = 'Base_Link'
+        self.parent_frame = 'base_link'
         self.child_frame = 'EE_frame'
         self.get_logger().info(f'Publishing /ee_pose from TF [{self.parent_frame} → {self.child_frame}]')
 

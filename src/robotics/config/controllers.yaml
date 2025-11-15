@@ -21,3 +21,4 @@ joint_trajectory_controller:
       - velocity
     command_interfaces:
       - position
+      - velocity

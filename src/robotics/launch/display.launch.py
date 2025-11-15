@@ -14,9 +14,17 @@ def generate_launch_description():
     pkg_path = get_package_share_directory('robotics')
     pkg_share_parent = os.path.dirname(pkg_path)
 
-    # Consistent sim time parameter for all nodes
-    use_sim_time = LaunchConfiguration('use_sim_time', default=True)
+    # Declare launch argument first
+    declare_use_sim_time = DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='true',
+        description='Use simulation time'
+    )
 
+    # Get the launch configuration
+    use_sim_time = LaunchConfiguration('use_sim_time')
+
+    world_file = os.path.join(pkg_path, 'worlds', 'robotics_world.sdf')
     urdf_file = os.path.join(pkg_path, 'urdf', 'robot.urdf')
     robot_controllers = os.path.join(pkg_path, 'config', 'controllers.yaml')
     robot_description = {'robot_description': open(urdf_file).read()}
@@ -31,7 +39,10 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         output='screen',
-        parameters=[robot_description, {'use_sim_time': use_sim_time}],
+        parameters=[
+            robot_description,
+            {'use_sim_time': use_sim_time}
+        ],
     )
 
     gz_spawn_entity = Node(
@@ -63,11 +74,13 @@ def generate_launch_description():
         ],
         parameters=[{'use_sim_time': use_sim_time}],
     )
-
+    
     bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
-        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock'],
+        arguments=[
+            '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
+        ],
         output='screen',
         parameters=[{'use_sim_time': use_sim_time}],
     )
@@ -75,7 +88,7 @@ def generate_launch_description():
     # --- Custom Robotics Nodes ---
     tf_to_pose_node = Node(
         package='robotics',
-        executable='tf_to_pose_publisher',
+        executable='tf_to_pose_velocity_publisher',
         output='screen',
         parameters=[{'use_sim_time': use_sim_time}],
     )
@@ -94,18 +107,44 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time}],
     )
 
+    velocity_command_node = Node(
+        package='robotics',
+        executable='velocity_command',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
+    inverse_kinematics_node = Node(
+        package='robotics',
+        executable='inverse_kinematics',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
+    # Replace tf_to_pose_velocity_node with:
+    ee_velocity_node = Node(
+        package='robotics',
+        executable='joint_state_to_ee_velocity',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
     # --- Launch Description ---
     return LaunchDescription([
+        # Declare arguments FIRST
+        declare_use_sim_time,
+        
+        # Then everything else
         set_gz_env,
-        tf_to_pose_node,
-        joint_trajectory_node,
-        fwd_kinematics_node,
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 [PathJoinSubstitution([FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])]
             ),
-            launch_arguments=[('gz_args', [' -r -v 4 empty.sdf'])],
+            launch_arguments=[('gz_args', f' -r -v 4 {world_file}')],
         ),
+        bridge,
+        node_robot_state_publisher,
+        gz_spawn_entity,
         RegisterEventHandler(
             event_handler=OnProcessExit(
                 target_action=gz_spawn_entity,
@@ -118,8 +157,10 @@ def generate_launch_description():
                 on_exit=[joint_trajectory_controller_spawner],
             )
         ),
-        bridge,
-        node_robot_state_publisher,
-        gz_spawn_entity,
-        DeclareLaunchArgument('use_sim_time', default_value='true'),
+        # tf_to_pose_node,
+        joint_trajectory_node,
+        fwd_kinematics_node,
+        inverse_kinematics_node,
+        velocity_command_node,
+        ee_velocity_node,
     ])

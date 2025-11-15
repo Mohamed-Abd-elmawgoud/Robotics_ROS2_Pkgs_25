@@ -1,0 +1,13 @@
+digraph G {
+"base_link" -> "joint1"[label=" Broadcaster: default_authority\nAverage rate: 19.798\nBuffer length: 4.95\nMost recent transform: 17.15\nOldest transform: 12.2\n"];
+"world" -> "base_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"joint1" -> "joint2"[label=" Broadcaster: default_authority\nAverage rate: 19.798\nBuffer length: 4.95\nMost recent transform: 17.15\nOldest transform: 12.2\n"];
+"joint2" -> "joint3"[label=" Broadcaster: default_authority\nAverage rate: 19.798\nBuffer length: 4.95\nMost recent transform: 17.15\nOldest transform: 12.2\n"];
+"joint3" -> "joint4"[label=" Broadcaster: default_authority\nAverage rate: 19.798\nBuffer length: 4.95\nMost recent transform: 17.15\nOldest transform: 12.2\n"];
+"joint4" -> "joint5"[label=" Broadcaster: default_authority\nAverage rate: 19.798\nBuffer length: 4.95\nMost recent transform: 17.15\nOldest transform: 12.2\n"];
+"joint5" -> "EE_frame"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+edge [style=invis];
+ subgraph cluster_legend { style=bold; color=black; label ="view_frames Result";
+"Recorded at time: 1763226461.986758"[ shape=plaintext ] ;
+}->"world";
+}

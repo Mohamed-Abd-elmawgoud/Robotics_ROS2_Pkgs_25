@@ -24,6 +24,9 @@ setup(
         # Install URDF files
         (os.path.join('share', package_name, 'urdf'),
             glob(os.path.join('urdf', '*.urdf'))),
+
+        (os.path.join('share', package_name, 'worlds'), glob('worlds/*.sdf')),  # Add this line
+
         
         # # Install RViz configuration files
         # (os.path.join('share', package_name, 'rviz'),
@@ -54,9 +57,12 @@ setup(
             'simple_controller=robotics.simple_controller:main',
             'joint_state_to_trajectory=robotics.joint_state_to_trajectory:main',
             'fwd_kinematics=robotics.fwd_kinematics:main',
-            'tf_to_pose_publisher=robotics.tf_to_pose_publisher:main',
+            'tf_to_pose_velocity_publisher=robotics.tf_to_pose_velocity_publisher:main',
             'joint_angles_publisher=robotics.joint_angles_publisher:main',
-
+            'inverse_kinematics=robotics.inverse_kinematics:main',
+            'velocity_kinematics=robotics.velocity_kinematics:main',
+            'velocity_command=robotics.velocity_command:main',
+            'joint_state_to_ee_velocity=robotics.joint_state_to_ee_velocity:main',
         ],
         
     },
