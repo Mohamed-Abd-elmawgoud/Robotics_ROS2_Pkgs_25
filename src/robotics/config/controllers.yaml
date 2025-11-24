@@ -7,18 +7,20 @@ joint_state_broadcaster:
   ros__parameters:
     type: joint_state_broadcaster/JointStateBroadcaster
 
-joint_trajectory_controller:
+joint_group_position_controller:
   ros__parameters:
-    type: joint_trajectory_controller/JointTrajectoryController
+    type: forward_command_controller/ForwardCommandController
     joints:
-      - Joint_1
-      - Joint_2
-      - Joint_3
-      - Joint_4
-      - Joint_5
-    state_interfaces:
-      - position
-      - velocity
-    command_interfaces:
-      - position
-      - velocity
+      - rotating_waist_joint
+      - arm_joint
+      - forearm_joint
+      - wrist_joint
+      - end_effector_joint
+    interface_name: position
+    gains:
+      rotating_waist_joint: {p: 5.0, i: 0.0, d: 0.1}
+      arm_joint:           {p: 5.0, i: 0.0, d: 0.1}
+      forearm_joint:       {p: 5.0, i: 0.0, d: 0.1}
+      wrist_joint:         {p: 3.0, i: 0.0, d: 0.05}
+      end_effector_joint:  {p: 3.0, i: 0.0, d: 0.05}
+

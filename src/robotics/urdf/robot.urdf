@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
-     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
-     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
-<robot name="New Robot Assmembly.SLDASM">
+<robot name="new_robot">
 
   <!-- ===== world alignment helper ===== -->
   <link name="world"/>
@@ -10,320 +7,169 @@
   <!-- ===================== base_link ===================== -->
   <link name="base_link">
     <inertial>
-      <origin
-        xyz="0.045901 0.04544 0.061027"
-        rpy="0 0 0" />
-      <mass
-        value="0.12603" />
-      <inertia
-        ixx="0.00011772"
-        ixy="3.7649E-14"
-        ixz="-1.0472E-06"
-        iyy="0.00013156"
-        iyz="-4.5947E-13"
-        izz="0.00019991" />
+      <origin xyz="0.0032737377052423 0 0.022568965676566" rpy="0 0 0"/>
+      <mass value="0.126025187508608"/>
+      <inertia ixx="0.000117724127781853" ixy="0" ixz="-1.047e-06"
+               iyy="0.000131560160703286" iyz="0" izz="0.000199906292659124"/>
     </inertial>
+
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://robotics/meshes/base_link.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="1 0 0 1" />
-      </material>
+      <origin xyz="0 0 0"/>
+      <geometry><mesh filename="package://robotics/meshes/base_link.STL"/></geometry>
+      <material name=""><color rgba="1 0.82 0.93 1"/></material>
     </visual>
+
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://robotics/meshes/base_link.STL" />
-      </geometry>
+      <origin xyz="0 0 0"/>
+      <geometry><mesh filename="package://robotics/meshes/base_link.STL"/></geometry>
     </collision>
   </link>
 
   <joint name="base_link_to_world" type="fixed">
     <parent link="world"/>
     <child link="base_link"/>
-    <origin xyz="0 0 0" rpy="-1.5708 0 0"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>
 
-  <!-- ===================== joint1 ===================== -->
-  <link name="joint1">
+
+  <!-- ===================== rotating_waist ===================== -->
+  <link name="rotating_waist">
     <inertial>
-      <origin
-        xyz="-7.5006E-08 0.023361 -0.012535"
-        rpy="0 0 0" />
-      <mass
-        value="0.1236" />
-      <inertia
-        ixx="7.651E-05"
-        ixy="6.6766E-11"
-        ixz="-2.7779E-10"
-        iyy="7.654E-05"
-        iyz="7.6888E-06"
-        izz="8.3288E-05" />
+      <origin xyz="-0.0125 0 0.02086"/>
+      <mass value="0.123597949087119"/>
+      <inertia ixx="8.3288e-05" ixy="0" ixz="7.688e-06"
+               iyy="7.6509e-05" iyz="0" izz="7.6539e-05"/>
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://robotics/meshes/joint1.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.79216 0.81961 0.93333 1" />
-      </material>
+      <origin xyz="0 0 0"/>
+      <geometry><mesh filename="package://robotics/meshes/rotating_waist.STL"/></geometry>
+      <material name=""><color rgba="1 0 0 1"/></material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://robotics/meshes/joint1.STL" />
-      </geometry>
+      <origin xyz="0 0 0"/>
+      <geometry><mesh filename="package://robotics/meshes/rotating_waist.STL"/></geometry>
     </collision>
   </link>
 
-  <joint name="Joint_1" type="revolute">
-    <origin
-      xyz="0.042627 -0.088458 0.04544"
-      rpy="0 -1.5708 3.14159" />
-    <parent link="base_link" />
-    <child link="joint1" />
-    <axis xyz="0 1 0" />
-    <limit
-      lower="-3.14159"
-      upper="3.14159"
-      effort="200"
-      velocity="2.0" />
-    <dynamics damping="3.0" friction="0.2"/>
+  <joint name="rotating_waist_joint" type="revolute">
+    <origin xyz="0 0 0.0525"/>
+    <parent link="base_link"/>
+    <child link="rotating_waist"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14" upper="3.14" effort="5" velocity="2"/>
   </joint>
 
-  <!-- ===================== joint2 ===================== -->
-  <link name="joint2">
+
+  <!-- ===================== arm ===================== -->
+  <link name="arm">
     <inertial>
-      <origin
-        xyz="0.070004 0.010308 -3.2059E-07"
-        rpy="0 0 0" />
-      <mass
-        value="0.13798" />
-      <inertia
-        ixx="3.0835E-05"
-        ixy="-3.3685E-09"
-        ixz="-1.1827E-11"
-        iyy="0.00043168"
-        iyz="3.5027E-10"
-        izz="0.00041293" />
+      <origin xyz="0.0699 0.00217 0.0063"/>
+      <mass value="0.137984699871301"/>
+      <inertia ixx="3.120e-05" ixy="-1.186e-05" ixz="0"
+               iyy="0.000412558" iyz="0" izz="0.000431683"/>
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://robotics/meshes/joint2.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="1 1 1 1" />
-      </material>
+      <origin xyz="0 0 0"/>
+      <geometry><mesh filename="package://robotics/meshes/arm.STL"/></geometry>
+      <material name=""><color rgba="1 0 0 1"/></material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://robotics/meshes/joint2.STL" />
-      </geometry>
+      <origin xyz="0 0 0"/>
+      <geometry><mesh filename="package://robotics/meshes/arm.STL"/></geometry>
     </collision>
   </link>
 
-  <joint name="Joint_2" type="revolute">
-    <origin
-      xyz="0 0.04355 0"
-      rpy="1.5708 0 1.6019" />
-    <parent link="joint1" />
-    <child link="joint2" />
-    <axis xyz="0 1 0" />
-    <limit
-      lower="-3.14159"
-      upper="3.14159"
-      effort="200"
-      velocity="2.0" />
-    <dynamics damping="3.0" friction="0.2"/>
+  <joint name="arm_joint" type="revolute">
+    <origin xyz="0.004 0 0.04105" rpy="0 -1.5708 3.14"/>
+    <parent link="rotating_waist"/>
+    <child link="arm"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14" upper="3.14" effort="5" velocity="2"/>
   </joint>
 
-  <!-- ===================== joint3 ===================== -->
-  <link name="joint3">
+
+  <!-- ===================== forearm ===================== -->
+  <link name="forearm">
     <inertial>
-      <origin
-        xyz="0.044472 4.5689E-05 0.014851"
-        rpy="0 0 0" />
-      <mass
-        value="0.14179" />
-      <inertia
-        ixx="3.0521E-05"
-        ixy="2.6546E-07"
-        ixz="-6.6792E-07"
-        iyy="0.00011989"
-        iyz="7.4562E-09"
-        izz="0.00012974" />
+      <origin xyz="0.04447 0 -0.01885"/>
+      <mass value="0.141790967611344"/>
+      <inertia ixx="3.05e-05" ixy="0" ixz="6e-07"
+               iyy="0.00011989" iyz="0" izz="0.00012974"/>
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://robotics/meshes/joint3.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.79216 0.81961 0.93333 1" />
-      </material>
+      <origin xyz="0 0 0"/>
+      <geometry><mesh filename="package://robotics/meshes/forearm.STL"/></geometry>
+      <material name=""><color rgba="1 0 0 1"/></material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://robotics/meshes/joint3.STL" />
-      </geometry>
+      <origin xyz="0 0 0"/>
+      <geometry><mesh filename="package://robotics/meshes/forearm.STL"/></geometry>
     </collision>
   </link>
 
-  <joint name="Joint_3" type="revolute">
-    <origin
-      xyz="0.14 0 0"
-      rpy="1.5708 -0.031075 0" />
-    <parent link="joint2" />
-    <child link="joint3" />
-    <axis xyz="0 0 1" />
-    <limit
-      lower="-3.14159"
-      upper="3.14159"
-      effort="200"
-      velocity="2.0" />
-    <dynamics damping="3.0" friction="0.2"/>
+  <joint name="forearm_joint" type="revolute">
+    <origin xyz="0.13993 0.0043497 0"/>
+    <parent link="arm"/>
+    <child link="forearm"/>
+    <axis xyz="0 0 -1"/>
+    <limit lower="-3.14" upper="3.14" effort="5" velocity="2"/>
   </joint>
 
-  <!-- ===================== joint4 ===================== -->
-  <link name="joint4">
+
+  <!-- ===================== wrist ===================== -->
+  <link name="wrist">
     <inertial>
-      <origin
-        xyz="0.024191 -0.0013958 0.00056094"
-        rpy="0 0 0" />
-      <mass
-        value="0.01872" />
-      <inertia
-        ixx="2.2147E-06"
-        ixy="2.1455E-07"
-        ixz="-6.6915E-07"
-        iyy="3.7818E-06"
-        iyz="3.4006E-08"
-        izz="2.6964E-06" />
+      <origin xyz="0.02419 0.00139 -0.00761"/>
+      <mass value="0.01872"/>
+      <inertia ixx="2.214e-06" ixy="0" ixz="0"
+               iyy="3.78e-06" iyz="0" izz="2.69e-06"/>
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://robotics/meshes/joint4.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.79216 0.81961 0.93333 1" />
-      </material>
+      <geometry><mesh filename="package://robotics/meshes/wrist.STL"/></geometry>
+      <material name=""><color rgba="1 0 0 1"/></material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://robotics/meshes/joint4.STL" />
-      </geometry>
+      <geometry><mesh filename="package://robotics/meshes/wrist.STL"/></geometry>
     </collision>
   </link>
 
-  <joint name="Joint_4" type="revolute">
-    <origin
-      xyz="0.1329 0.0005 0"
-      rpy="0 0 0" />
-    <parent link="joint3" />
-    <child link="joint4" />
-    <axis xyz="0 0 1" />
-    <limit
-      lower="-3.14159"
-      upper="3.14159"
-      effort="200"
-      velocity="2.0" />
-    <dynamics damping="3.0" friction="0.2"/>
+  <joint name="wrist_joint" type="revolute">
+    <origin xyz="0.1329 -0.0005 0.00305"/>
+    <parent link="forearm"/>
+    <child link="wrist"/>
+    <axis xyz="0 0 -1"/>
+    <limit lower="-3.14" upper="3.14" effort="5" velocity="2"/>
   </joint>
 
-  <!-- ===================== joint5 ===================== -->
-  <link name="joint5">
+
+  <!-- ===================== end_effector ===================== -->
+  <link name="end_effector">
     <inertial>
-      <origin
-        xyz="0.049461 0.00055902 0.0008483"
-        rpy="0 0 0" />
-      <mass
-        value="0.04918" />
-      <inertia
-        ixx="1.0729E-05"
-        ixy="3.6235E-07"
-        ixz="3.7338E-08"
-        iyy="1.2117E-05"
-        iyz="-2.4704E-08"
-        izz="9.7828E-06" />
+      <origin xyz="-0.00055 -0.00118 0.0196"/>
+      <mass value="0.04918"/>
+      <inertia ixx="1.21e-05" ixy="0" ixz="0"
+               iyy="9.782e-06" iyz="0" izz="1.072e-05"/>
     </inertial>
     <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://robotics/meshes/joint5.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.79216 0.81961 0.93333 1" />
-      </material>
+      <geometry><mesh filename="package://robotics/meshes/end_effector.STL"/></geometry>
+      <material name=""><color rgba="1 0 0 1"/></material>
     </visual>
     <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://robotics/meshes/joint5.STL" />
-      </geometry>
+      <geometry><mesh filename="package://robotics/meshes/end_effector.STL"/></geometry>
     </collision>
   </link>
 
-  <joint name="Joint_5" type="revolute">
-    <origin
-      xyz="0.02245 -0.00038473 -0.0018312"
-      rpy="1.5708 0 0" />
-    <parent link="joint4" />
-    <child link="joint5" />
-    <axis xyz="1 0 0" />
-    <limit
-      lower="-3.14159"
-      upper="3.14159"
-      effort="200"
-      velocity="2.0" />
-    <dynamics damping="3.0" friction="0.2"/>
+  <joint name="end_effector_joint" type="revolute">
+    <origin xyz="0.0523 0  -0.0052" rpy="0 1.5708 0"/>
+    <parent link="wrist"/>
+    <child link="end_effector"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14" upper="3.14" effort="5" velocity="2"/>
   </joint>
 
-  <!-- ===================== End Effector Frame ===================== -->
-  <link name="EE_frame">
+
+  <!-- ===================== EE_frame ===================== -->
+   <!-- <link name="EE_frame">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <mass value="0.001"/>
@@ -349,58 +195,54 @@
   </link>
 
   <joint name="EE_frame_lock" type="fixed">
-    <parent link="joint5"/>
+    <parent link="end_effector"/>
     <child link="EE_frame"/>
-    <origin xyz="0.09 0.0 0.0" rpy="0 0 0"/>
+    <origin xyz="0.09 0 0"/>
+  </joint> -->
+
+
+  <!-- ===================== ROS 2 CONTROL ===================== -->
+  <ros2_control name="new_robot_control" type="system">
+  <hardware>
+    <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+  </hardware>
+
+  <joint name="rotating_waist_joint">
+    <command_interface name="position"/>
+    <state_interface name="position"/>
   </joint>
 
-  <!-- ===================== ROS2 Control ===================== -->
-  <ros2_control name="NewRobotController" type="system">
-    <hardware>
-      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
-    </hardware>
-    <joint name="Joint_1">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-      <state_interface name="effort"/>
-    </joint>
-    <joint name="Joint_2">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-      <state_interface name="effort"/>
-    </joint>
-    <joint name="Joint_3">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-      <state_interface name="effort"/>
-    </joint>
-    <joint name="Joint_4">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-      <state_interface name="effort"/>
-    </joint>
-    <joint name="Joint_5">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-      <state_interface name="effort"/>
-    </joint>
-  </ros2_control>
+  <joint name="arm_joint">
+    <command_interface name="position"/>
+    <state_interface name="position"/>
+  </joint>
 
+  <joint name="forearm_joint">
+    <command_interface name="position"/>
+    <state_interface name="position"/>
+  </joint>
+
+  <joint name="wrist_joint">
+    <command_interface name="position"/>
+    <state_interface name="position"/>
+  </joint>
+
+  <joint name="end_effector_joint">
+    <command_interface name="position"/>
+    <state_interface name="position"/>
+  </joint>
+</ros2_control>
+
+
+  <!-- ===================== GAZEBO SIM PLUGIN ===================== -->
   <gazebo>
-    <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
-    <parameters>/home/dell/robotics/install/robotics/share/robotics/config/controllers.yaml</parameters>
+    <plugin filename="gz_ros2_control-system"
+            name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>
+        /home/dell/robotics/install/robotics/share/robotics/config/controllers.yaml
+      </parameters>
       <link_state_publish_rate>100</link_state_publish_rate>
-     </plugin>
+    </plugin>
   </gazebo>
 
 </robot>

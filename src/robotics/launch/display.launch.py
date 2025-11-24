@@ -68,7 +68,7 @@ def generate_launch_description():
         package='controller_manager',
         executable='spawner',
         arguments=[
-            'joint_trajectory_controller',
+            'joint_group_position_controller',
             '--controller-manager', '/controller_manager',
             '--param-file', robot_controllers
         ],
@@ -79,8 +79,7 @@ def generate_launch_description():
         package='ros_gz_bridge',
         executable='parameter_bridge',
         arguments=[
-            '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
-        ],
+            "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",        ],
         output='screen',
         parameters=[{'use_sim_time': use_sim_time}],
     )
@@ -157,10 +156,10 @@ def generate_launch_description():
                 on_exit=[joint_trajectory_controller_spawner],
             )
         ),
-        # tf_to_pose_node,
+        tf_to_pose_node,
         joint_trajectory_node,
         fwd_kinematics_node,
         inverse_kinematics_node,
-        velocity_command_node,
-        ee_velocity_node,
+        # velocity_command_node,
+        # ee_velocity_node,
     ])

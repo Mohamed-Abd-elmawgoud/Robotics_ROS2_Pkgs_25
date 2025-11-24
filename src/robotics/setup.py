@@ -63,6 +63,8 @@ setup(
             'velocity_kinematics=robotics.velocity_kinematics:main',
             'velocity_command=robotics.velocity_command:main',
             'joint_state_to_ee_velocity=robotics.joint_state_to_ee_velocity:main',
+            'velocity_validator=robotics.velocity_validator:main',
+            'inverse_velocity_validator=robotics.inverse_velocity_validator:main',
         ],
         
     },
