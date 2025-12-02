@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 
 import rclpy
@@ -23,10 +24,10 @@ except ImportError:
             
             def fwd_kinematics(self, q):
                 l1, l2, l3, l4, l5 = self.l1, self.l2, self.l3, self.l4, self.l5
-                theta = [np.pi/2+q[0], -np.pi/2+q[1], q[2], -np.pi/2+q[3], np.pi/2+q[4]]
-                d = [l1, 0, 0, 0, -l4-l5]
+                theta = [-np.pi/2+q[0], -np.pi/2+q[1], q[2], -np.pi/2+q[3], np.pi/2+q[4]]
+                d = [-l1, 0, 0, 0, -l4-l5]
                 a = [0, l2, l3, 0, 0]
-                alpha = [-np.pi/2, np.pi, np.pi, np.pi/2, 0]
+                alpha = [np.pi/2, np.pi, np.pi, np.pi/2, 0]
                 T = np.eye(4)
                 for i in range(5):
                     ct = np.cos(theta[i])

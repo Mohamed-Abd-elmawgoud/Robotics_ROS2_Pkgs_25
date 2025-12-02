@@ -65,6 +65,9 @@ setup(
             'joint_state_to_ee_velocity=robotics.joint_state_to_ee_velocity:main',
             'velocity_validator=robotics.velocity_validator:main',
             'inverse_velocity_validator=robotics.inverse_velocity_validator:main',
+            'joint_traj=robotics.joint_traj:main',
+            'Arduino_sender=robotics.Arduino_sender:main',
+            'Arduino_receiver=robotics.Arduino_receiver:main',
         ],
         
     },

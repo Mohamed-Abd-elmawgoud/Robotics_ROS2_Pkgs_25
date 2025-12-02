@@ -158,8 +158,8 @@ def generate_launch_description():
         ),
         tf_to_pose_node,
         joint_trajectory_node,
-        fwd_kinematics_node,
-        inverse_kinematics_node,
+        # fwd_kinematics_node,
+        # inverse_kinematics_node,
         # velocity_command_node,
         # ee_velocity_node,
     ])

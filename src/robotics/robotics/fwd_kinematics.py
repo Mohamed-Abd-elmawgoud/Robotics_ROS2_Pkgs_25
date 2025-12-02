@@ -54,15 +54,15 @@ class ForwardKinematicsNode(Node):
         
         # DH parameter table (converted from MATLAB)
         theta = [
-            np.pi/2 + q[0],
+            -np.pi/2 + q[0],
             -np.pi/2 + q[1],
             q[2],
             -np.pi/2 + q[3],
             np.pi/2 + q[4]
         ]
-        d = [l1, 0, 0, 0, -l4-l5]
+        d = [-l1, 0, 0, 0, -l4-l5]
         a = [0, l2, l3, 0, 0]
-        alpha = [-np.pi/2, np.pi, np.pi, np.pi/2, 0]
+        alpha = [np.pi/2, np.pi, np.pi, np.pi/2, 0]
         
         # Initialize transformation matrix
         T = np.eye(4)
