@@ -17,7 +17,7 @@ class PoseTrajectoryNode(Node):
         # Publisher
         self.joint_pub = self.create_publisher(Float64MultiArray, 'joint_angles_out', 10)
 
-        # IK object (using full 5-DOF IK with proper weighting)
+        # IK object (always pointing down mode)
         self.ik = InverseKinematicsNode()
         
         # Default trajectory parameters
@@ -37,9 +37,9 @@ class PoseTrajectoryNode(Node):
         """Display approximate workspace limits"""
         l1, l2, l3, l4, l5 = self.ik.l1, self.ik.l2, self.ik.l3, self.ik.l4, self.ik.l5
         
-        print("\n" + "="*60)
+        print("\n" + "="*70)
         print("ROBOT WORKSPACE INFORMATION")
-        print("="*60)
+        print("="*70)
         print(f"Link lengths (mm):")
         print(f"  l1 (base height): {l1:.2f}")
         print(f"  l2 (upper arm):   {l2:.2f}")
@@ -49,16 +49,15 @@ class PoseTrajectoryNode(Node):
         print(f"  Max horizontal: ~{l2 + l3:.1f} mm = {(l2+l3)/1000:.3f} m")
         print(f"  Max vertical (up): ~{l2 + l3 - l1:.1f} mm")
         print(f"  Max vertical (down): ~{-(l2 + l3 + l1):.1f} mm")
-        print(f"  Tool length: {l4 + l5:.1f} mm (subtracted to get wrist center)")
-        print(f"\nIK Method: Decoupled 3+1+1 DOF")
-        print(f"  - 3-DOF position IK for q1, q2, q3")
-        print(f"  - q4 solved for pitch (R33 control)")
-        print(f"  - q5 set directly (tool rotation)")
-        print(f"\nPitch convention:")
-        print(f"  pitch = -90° → R33 = -1 (tool pointing DOWN)")
-        print(f"  pitch = 0°   → R33 = 0  (tool HORIZONTAL)")
-        print(f"  pitch = +90° → R33 = 1  (tool pointing UP)")
-        print("="*60 + "\n")
+        print(f"  Tool length: {l4 + l5:.1f} mm")
+        print(f"\n{'='*70}")
+        print("IK MODE: Tool ALWAYS pointing DOWN")
+        print("="*70)
+        print("You only need to specify:")
+        print("  • Position (X, Y, Z) in meters")
+        print("  • q5 (lamp rotation) in degrees")
+        print("\nThe gripper will ALWAYS point straight down!")
+        print("="*70 + "\n")
 
     # ------------------------------------------------------------
     # Save trajectory to CSV file
@@ -67,10 +66,6 @@ class PoseTrajectoryNode(Node):
         """
         Save trajectory to CSV file with timestamp.
         Exports angles in degrees, rounded to 2 decimal places for Arduino.
-        
-        Args:
-            trajectory: list of numpy arrays (joint angles)
-            filename: optional custom filename
         """
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -79,18 +74,15 @@ class PoseTrajectoryNode(Node):
         try:
             with open(filename, 'w', newline='') as csvfile:
                 writer = csv.writer(csvfile)
-                
-                # Write header (Arduino-friendly format)
                 writer.writerow(['Step', 'q1', 'q2', 'q3', 'q4', 'q5'])
                 
-                # Write data - angles in degrees, rounded to 2 decimal places
                 for i, q in enumerate(trajectory):
                     q_deg = np.rad2deg(q)
                     q_rounded = np.round(q_deg, 2)
                     writer.writerow([i] + q_rounded.tolist())
             
             print(f"\n✓ Trajectory saved to: {filename}")
-            print(f"   Format: Step, q1°, q2°, q3°, q4°, q5° (degrees, rounded to 2 decimals)")
+            print(f"   Format: Step, q1°, q2°, q3°, q4°, q5°")
             self.get_logger().info(f"Trajectory saved to: {filename}")
             return True
         except Exception as e:
@@ -99,19 +91,23 @@ class PoseTrajectoryNode(Node):
             return False
 
     # ------------------------------------------------------------
-    # Solve IK for a given pose (position + pitch + q5)
+    # Solve IK for a given position + q5 (always pointing down)
     # ------------------------------------------------------------
-    def solve_ik_for_pose(self, ee_pos_mm, pitch_rad, q5_rad, q_init):
+    def solve_ik_for_pose(self, ee_pos_mm, q5_rad, q_init):
         """
-        Solve IK using decoupled approach.
-        Now uses 3-DOF position IK + q4 for pitch + q5 for rotation.
+        Solve IK for position with tool always pointing down.
+        
+        Args:
+            ee_pos_mm: end-effector position in mm
+            q5_rad: q5 rotation in radians
+            q_init: initial guess
         """
         self.get_logger().info(
-            f"Target: EE=[{ee_pos_mm[0]:.1f}, {ee_pos_mm[1]:.1f}, {ee_pos_mm[2]:.1f}] mm, "
-            f"pitch={np.rad2deg(pitch_rad):.1f}°, q5={np.rad2deg(q5_rad):.1f}°"
+            f"IK Request: pos=[{ee_pos_mm[0]:.1f}, {ee_pos_mm[1]:.1f}, {ee_pos_mm[2]:.1f}] mm, "
+            f"q5={np.rad2deg(q5_rad):.1f}° (tool pointing DOWN)"
         )
         
-        # Try multiple initial guesses for robustness
+        # Try multiple initial guesses
         guesses = [
             q_init,
             np.array([0, 0, 0, 0, q5_rad]),
@@ -121,132 +117,93 @@ class PoseTrajectoryNode(Node):
         
         best_error = float('inf')
         best_sol = None
-        best_converged = False
         
         for i, guess in enumerate(guesses):
-            q_sol, converged = self.ik.solve_ik_for_pose(ee_pos_mm, pitch_rad, q5_rad, guess)
+            q_sol, converged = self.ik.solve_ik_for_pose(ee_pos_mm, q5_rad, guess)
             
             if q_sol is None:
                 continue
             
-            # Verify solution quality
+            # Verify solution
             T = self.ik.fk_node.fwd_kinematics(q_sol.tolist())
             pos_error = np.linalg.norm(T[:3, 3] - ee_pos_mm)
+            R33 = self.ik.get_R33(q_sol)
+            orientation_error = abs(R33 - 1.0)  # CHANGED: Should be +1.0 for pointing down
             
-            # Check pitch error using R33
-            R33_current = self.ik.get_R33(q_sol)
-            R33_target = self.ik.pitch_to_R33(pitch_rad)
-            R33_error = abs(R33_current - R33_target)
-            
-            # Also get pitch angle for reporting
-            current_pitch = self.ik.get_current_pitch(q_sol)
-            pitch_error = abs(pitch_rad - current_pitch)
-            pitch_error = abs(np.arctan2(np.sin(pitch_error), np.cos(pitch_error)))
-            
-            # Combined error
-            combined_error = pos_error + 100.0 * R33_error
+            combined_error = pos_error + 100.0 * orientation_error
             
             if combined_error < best_error:
                 best_error = combined_error
                 best_sol = q_sol
-                best_converged = converged
             
-            # If we found a good solution, use it
-            if pos_error < 2.0 and R33_error < 0.05:
+            # Accept good solutions early
+            if pos_error < 2.0 and orientation_error < 0.05:
                 self.get_logger().info(
-                    f"✓ Solution found (guess {i})! "
-                    f"pos_err={pos_error:.3f}mm, pitch_err={np.rad2deg(pitch_error):.2f}°, R33_err={R33_error:.4f}"
+                    f"✓ Solution found! pos_err={pos_error:.3f}mm, R33={R33:.4f}"
                 )
-                print(f"  → Joint angles (deg): {np.round(np.rad2deg(q_sol), 2)}")
-                print(f"  → R33: {R33_current:.4f} (target: {R33_target:.4f})")
                 return q_sol, True
         
         # Check if best solution is acceptable
         if best_sol is None:
-            self.get_logger().error("IK FAILED! No solution found from any initial guess.")
+            self.get_logger().error("❌ IK FAILED - No solution found")
             return None, False
         
-        # Verify best solution
         T_best = self.ik.fk_node.fwd_kinematics(best_sol.tolist())
         final_pos_error = np.linalg.norm(T_best[:3, 3] - ee_pos_mm)
+        final_R33 = self.ik.get_R33(best_sol)
         
-        R33_best = self.ik.get_R33(best_sol)
-        R33_target = self.ik.pitch_to_R33(pitch_rad)
-        R33_error = abs(R33_best - R33_target)
-        
-        final_pitch = self.ik.get_current_pitch(best_sol)
-        final_pitch_error = abs(pitch_rad - final_pitch)
-        final_pitch_error = abs(np.arctan2(np.sin(final_pitch_error), np.cos(final_pitch_error)))
-        
-        if final_pos_error < 10.0 and R33_error < 0.1:
+        # CHANGED: Check R33 > 0.85 instead of < -0.85
+        if final_pos_error < 10.0 and final_R33 > 0.85:
             self.get_logger().warn(
-                f"Accepting best solution: pos_err={final_pos_error:.3f}mm, "
-                f"pitch_err={np.rad2deg(final_pitch_error):.2f}°, R33_err={R33_error:.4f}"
+                f"⚠ Accepting solution: pos_err={final_pos_error:.3f}mm, R33={final_R33:.4f}"
             )
-            print(f"  → Joint angles (deg): {np.round(np.rad2deg(best_sol), 2)}")
-            print(f"  → R33: {R33_best:.4f} (target: {R33_target:.4f})")
             return best_sol, True
         
         self.get_logger().error(
-            f"IK FAILED! Best: pos_err={final_pos_error:.3f}mm, "
-            f"pitch_err={np.rad2deg(final_pitch_error):.2f}°, R33_err={R33_error:.4f}"
+            f"❌ IK FAILED - pos_err={final_pos_error:.3f}mm, R33={final_R33:.4f}"
         )
         return None, False
 
     # ------------------------------------------------------------
-    # Main loop: ask for input, generate trajectory, publish
+    # Main loop
     # ------------------------------------------------------------
     def run_loop(self):
-        print("\n=== Pose Trajectory Generator (Position + Orientation) ===")
-        print("Enter positions in meters and angles in degrees")
-        
-        # Show example lamp pick-and-place sequence
         print("\n" + "="*70)
-        print("EXAMPLE LAMP PICK-AND-PLACE SEQUENCE:")
+        print("POSE TRAJECTORY GENERATOR")
+        print("Tool Always Pointing DOWN")
         print("="*70)
-        print("Lamp on table (pick):")
-        print("  Position: 0.15 0 -0.15 (150mm forward, 150mm below base)")
-        print("  Pitch: -90 (gripper pointing down)")
-        print("  q5: 0")
-        print("\nSocket location (place):")
-        print("  Position: 0 0.25 -0.2 (250mm to side)")
-        print("  Pitch: 90 (gripper pointing up to screw in)")
-        print("  q5: 180 (rotate lamp 180° while moving)")
-        print("\nHome position:")
-        print("  Position: 0 0 -0.404 (straight down from base)")
-        print("  Pitch: -90 (pointing down)")
-        print("  q5: 0")
-        print("\nTest orientation change (same position):")
-        print("  Position: 0.15 0 -0.15")
-        print("  Pitch: 0 (gripper horizontal)")
-        print("  q5: 0")
+        print("\nEnter positions in meters and q5 rotation in degrees")
+        
+        print("\n" + "="*70)
+        print("EXAMPLE SEQUENCES:")
+        print("="*70)
+        print("\n1. Pick lamp from table:")
+        print("   Initial: 0.15 0 -0.15, q5=0")
+        print("   Final:   0 0.2 -0.2, q5=0")
+        print("\n2. Rotate lamp while moving:")
+        print("   Initial: 0.15 0 -0.15, q5=0")
+        print("   Final:   0 0.2 -0.2, q5=180")
+        print("\n3. Home position test:")
+        print("   Initial: 0 0 -0.404, q5=0")
+        print("   Final:   0.15 0 -0.15, q5=0")
         print("="*70 + "\n")
 
-        # Counter for trajectory files
         traj_counter = 1
 
-        # -----------------------------------------
-        # First input: initial and final pose
-        # -----------------------------------------
+        # Get first trajectory
         try:
-            print("\n--- INITIAL POSE ---")
+            print("--- INITIAL POSITION ---")
             xyz0 = input("Enter INITIAL X Y Z (m): ").split()
             self.x0, self.y0, self.z0 = map(float, xyz0)
             
-            pitch0_deg = float(input("Enter INITIAL pitch angle (degrees): "))
-            pitch0_rad = np.deg2rad(pitch0_deg)
-            
-            q5_0_deg = float(input("Enter INITIAL q5/lamp rotation (degrees): "))
+            q5_0_deg = float(input("Enter INITIAL q5 rotation (degrees): "))
             q5_0_rad = np.deg2rad(q5_0_deg)
 
-            print("\n--- FINAL POSE ---")
+            print("\n--- FINAL POSITION ---")
             xyzf = input("Enter FINAL X Y Z (m): ").split()
             self.xf, self.yf, self.zf = map(float, xyzf)
             
-            pitch_f_deg = float(input("Enter FINAL pitch angle (degrees): "))
-            pitch_f_rad = np.deg2rad(pitch_f_deg)
-            
-            q5_f_deg = float(input("Enter FINAL q5/lamp rotation (degrees): "))
+            q5_f_deg = float(input("Enter FINAL q5 rotation (degrees): "))
             q5_f_rad = np.deg2rad(q5_f_deg)
 
             print("\n--- TRAJECTORY PARAMETERS ---")
@@ -257,292 +214,216 @@ class PoseTrajectoryNode(Node):
             save_to_csv = save_option == 'y'
 
         except ValueError:
-            print("Invalid input, try again.")
+            print("Invalid input.")
             return
 
-        # Convert positions to mm
+        # Convert to mm
         X0 = np.array([self.x0*1000, self.y0*1000, self.z0*1000])
         Xf = np.array([self.xf*1000, self.yf*1000, self.zf*1000])
 
-        # Solve IK for initial pose
-        print("\n" + "="*50)
-        print("SOLVING IK FOR INITIAL POSE...")
-        print("="*50)
-        print(f"Position (mm): [{X0[0]:.1f}, {X0[1]:.1f}, {X0[2]:.1f}]")
-        print(f"Pitch: {pitch0_deg:.1f}°, q5: {q5_0_deg:.1f}°")
+        # Solve IK for initial position
+        print("\n" + "="*70)
+        print("SOLVING IK FOR INITIAL POSITION...")
+        print("="*70)
         
-        # Better initial guess based on typical configuration
-        if X0[2] < 0:
-            q_guess = np.array([0.0, -0.3, -0.3, 0.0, q5_0_rad])
-        else:
-            q_guess = np.array([0.0, 0.3, 0.3, 0.0, q5_0_rad])
-            
-        q0, conv0 = self.solve_ik_for_pose(X0, pitch0_rad, q5_0_rad, q_guess)
+        q_guess = np.array([0.0, 0.0, 0.0, 0.0, q5_0_rad]) if X0[2] >= 0 else np.array([0.0, -0.3, -0.3, 0.0, q5_0_rad])
+        q0, conv0 = self.solve_ik_for_pose(X0, q5_0_rad, q_guess)
         
-        if not conv0:
-            print("\n❌ IK FAILED FOR INITIAL POSE!")
+        if not conv0 or q0 is None:
+            print("\n❌ IK FAILED FOR INITIAL POSITION")
             return
 
-        print(f"✓ Initial joints (deg): {np.round(np.rad2deg(q0), 2)}")
+        print(f"\n✓ Initial joints: {np.round(np.rad2deg(q0), 1)}°")
 
-        # Verify initial pose
+        # Verify
         T0 = self.ik.fk_node.fwd_kinematics(q0.tolist())
-        actual_pitch0 = self.ik.get_current_pitch(q0)
         R33_0 = self.ik.get_R33(q0)
-        print(f"  Achieved position: {np.round(T0[:3, 3], 2)} mm")
-        print(f"  Achieved pitch: {np.rad2deg(actual_pitch0):.1f}°")
-        print(f"  Achieved R33: {R33_0:.4f}")
+        print(f"  Achieved position: {np.round(T0[:3, 3], 1)} mm")
+        print(f"  R33 (should be ~+1.0): {R33_0:.4f}")  # CHANGED: Updated comment
 
-        # Move to initial position
+        # Move to initial
         msg = Float64MultiArray()
         msg.data = q0.tolist()
         self.joint_pub.publish(msg)
-        self.get_logger().info(f"Moving to initial position...")
-        print(f"→ Publishing to 'joint_angles_out' topic")
+        print(f"\n→ Moving to initial position...")
         time.sleep(1.0)
 
-        # Solve IK for final pose
-        print("\n" + "="*50)
-        print("SOLVING IK FOR FINAL POSE...")
-        print("="*50)
-        print(f"Position (mm): [{Xf[0]:.1f}, {Xf[1]:.1f}, {Xf[2]:.1f}]")
-        print(f"Pitch: {pitch_f_deg:.1f}°, q5: {q5_f_deg:.1f}°")
+        # Solve IK for final position
+        print("\n" + "="*70)
+        print("SOLVING IK FOR FINAL POSITION...")
+        print("="*70)
         
-        qf, convf = self.solve_ik_for_pose(Xf, pitch_f_rad, q5_f_rad, q0.copy())
+        qf, convf = self.solve_ik_for_pose(Xf, q5_f_rad, q0.copy())
         
-        if not convf:
-            print("\n❌ IK FAILED FOR FINAL POSE!")
+        if not convf or qf is None:
+            print("\n❌ IK FAILED FOR FINAL POSITION")
             return
 
-        print(f"✓ Final joints (deg): {np.round(np.rad2deg(qf), 2)}")
+        print(f"\n✓ Final joints: {np.round(np.rad2deg(qf), 1)}°")
 
-        # Verify final pose
+        # Verify
         Tf = self.ik.fk_node.fwd_kinematics(qf.tolist())
-        actual_pitchf = self.ik.get_current_pitch(qf)
         R33_f = self.ik.get_R33(qf)
-        print(f"  Achieved position: {np.round(Tf[:3, 3], 2)} mm")
-        print(f"  Achieved pitch: {np.rad2deg(actual_pitchf):.1f}°")
-        print(f"  Achieved R33: {R33_f:.4f}")
+        print(f"  Achieved position: {np.round(Tf[:3, 3], 1)} mm")
+        print(f"  R33 (should be ~+1.0): {R33_f:.4f}")  # CHANGED: Updated comment
 
-        # Show changes
-        print(f"\n{'='*50}")
-        print("TRAJECTORY CHANGES:")
-        print(f"{'='*50}")
+        # Show motion summary
+        print(f"\n{'='*70}")
+        print("MOTION SUMMARY:")
+        print(f"{'='*70}")
         print(f"Position change: {np.linalg.norm(Tf[:3, 3] - T0[:3, 3]):.1f} mm")
-        print(f"Pitch change: {np.rad2deg(actual_pitchf - actual_pitch0):.1f}°")
-        print(f"Joint changes (deg): {np.round(np.rad2deg(qf - q0), 2)}")
+        print(f"q5 change: {np.rad2deg(qf[4] - q0[4]):.1f}°")
+        print(f"Joint changes: {np.round(np.rad2deg(qf - q0), 1)}°")
 
-        # Generate trajectory
+        # Generate and execute trajectory
         trajectory = self.compute_trajectory(q0, qf, self.Tf, self.Ts)
 
-        # Save first trajectory if requested
         if save_to_csv:
             filename = f"trajectory_{traj_counter}.csv"
             self.save_trajectory_to_csv(trajectory, filename)
             traj_counter += 1
 
-        # Execute first trajectory
-        print(f"\n{'='*50}")
+        print(f"\n{'='*70}")
         print(f"EXECUTING TRAJECTORY ({len(trajectory)} steps)")
-        print(f"{'='*50}")
+        print(f"{'='*70}")
         for i, q in enumerate(trajectory):
             msg = Float64MultiArray()
             msg.data = q.tolist()
             self.joint_pub.publish(msg)
-            if i % 10 == 0:  # Print every 10th step
-                print(f"  Step {i+1}/{len(trajectory)}: {np.round(np.rad2deg(q), 1)}°")
+            if i % 10 == 0:
+                print(f"  Step {i+1}/{len(trajectory)}")
             time.sleep(self.Ts)
 
-        print(f"✓ Trajectory complete!")
+        print(f"\n✓ Trajectory complete!")
 
-        # -----------------------------------------
-        # Subsequent movements
-        # -----------------------------------------
+        # Continue with more trajectories
         current_q = qf.copy()
 
         while rclpy.ok():
-            print("\n" + "="*50)
-            print("TRAJECTORY COMPLETE - NEXT ACTION?")
-            print("="*50)
-            print("Options:")
-            print("  1. Enter new FINAL pose (from current position)")
-            print("  2. Enter new INITIAL and FINAL poses")
-            print("  3. Change trajectory parameters (Tf, Ts)")
+            print("\n" + "="*70)
+            print("NEXT ACTION?")
+            print("="*70)
+            print("  1. New final position (from current)")
+            print("  2. New initial and final positions")
+            print("  3. Change trajectory timing")
             print("  q. Quit")
             
-            choice = input("Enter choice: ").strip().lower()
+            choice = input("Choice: ").strip().lower()
             
             if choice == 'q':
                 print("Exiting.")
                 break
             
             elif choice == '3':
-                # Change trajectory parameters
                 try:
-                    print("\n--- TRAJECTORY PARAMETERS ---")
-                    self.Tf = float(input(f"Enter total movement time Tf (current: {self.Tf}s): "))
-                    self.Ts = float(input(f"Enter timestep Ts (current: {self.Ts}s): "))
-                    print(f"✓ Updated: Tf={self.Tf}s, Ts={self.Ts}s")
-                except ValueError:
-                    print("Invalid input, keeping current values.")
+                    self.Tf = float(input(f"Total time Tf (current {self.Tf}s): "))
+                    self.Ts = float(input(f"Timestep Ts (current {self.Ts}s): "))
+                    print(f"✓ Updated timing")
+                except:
+                    print("Invalid input")
                 continue
             
             elif choice == '1':
-                # Use current position as initial
                 try:
-                    print("\n--- NEW FINAL POSE ---")
+                    print("\n--- NEW FINAL POSITION ---")
                     xyzf = input("Enter FINAL X Y Z (m): ").split()
                     self.xf, self.yf, self.zf = map(float, xyzf)
-                    
-                    pitch_f_deg = float(input("Enter FINAL pitch angle (degrees): "))
-                    pitch_f_rad = np.deg2rad(pitch_f_deg)
-                    
-                    q5_f_deg = float(input("Enter FINAL q5/lamp rotation (degrees): "))
+                    q5_f_deg = float(input("Enter FINAL q5 (degrees): "))
                     q5_f_rad = np.deg2rad(q5_f_deg)
-                    
-                except ValueError:
-                    print("Invalid input, try again.")
+                except:
+                    print("Invalid input")
                     continue
 
                 Xf = np.array([self.xf*1000, self.yf*1000, self.zf*1000])
 
-                # Show current state
-                T_current = self.ik.fk_node.fwd_kinematics(current_q.tolist())
-                current_pitch = self.ik.get_current_pitch(current_q)
-                current_R33 = self.ik.get_R33(current_q)
-                print(f"\nCurrent position: {np.round(T_current[:3, 3], 2)} mm")
-                print(f"Current pitch: {np.rad2deg(current_pitch):.1f}°")
-                print(f"Current R33: {current_R33:.4f}")
-                print(f"Current joints: {np.round(np.rad2deg(current_q), 1)}°")
-
-                # Solve IK for new final pose
-                print("\n" + "="*50)
-                print("SOLVING IK FOR NEW FINAL POSE...")
-                print("="*50)
-                print(f"Target position (mm): [{Xf[0]:.1f}, {Xf[1]:.1f}, {Xf[2]:.1f}]")
-                print(f"Target pitch: {pitch_f_deg:.1f}°, q5: {q5_f_deg:.1f}°")
+                print("\n" + "="*70)
+                print("SOLVING IK...")
+                print("="*70)
+                qf, convf = self.solve_ik_for_pose(Xf, q5_f_rad, current_q.copy())
                 
-                qf, convf = self.solve_ik_for_pose(Xf, pitch_f_rad, q5_f_rad, current_q.copy())
-                
-                if not convf:
-                    print("\n❌ IK FAILED FOR FINAL POSE!")
+                if not convf or qf is None:
+                    print("❌ IK FAILED")
                     continue
 
-                print(f"✓ New final joints (deg): {np.round(np.rad2deg(qf), 2)}")
-
-                # Verify and show changes
-                Tf = self.ik.fk_node.fwd_kinematics(qf.tolist())
-                actual_pitchf = self.ik.get_current_pitch(qf)
-                R33_f = self.ik.get_R33(qf)
-                print(f"  Achieved position: {np.round(Tf[:3, 3], 2)} mm")
-                print(f"  Achieved pitch: {np.rad2deg(actual_pitchf):.1f}°")
-                print(f"  Achieved R33: {R33_f:.4f}")
-                print(f"\nChanges:")
-                print(f"  Position: {np.linalg.norm(Tf[:3, 3] - T_current[:3, 3]):.1f} mm")
-                print(f"  Pitch: {np.rad2deg(actual_pitchf - current_pitch):.1f}°")
-                print(f"  R33: {R33_f - current_R33:.4f}")
-                print(f"  Joints: {np.round(np.rad2deg(qf - current_q), 2)}°")
-
-                # Generate trajectory from current to new final
                 trajectory = self.compute_trajectory(current_q, qf, self.Tf, self.Ts)
 
             elif choice == '2':
-                # Get both new initial and final poses
                 try:
-                    print("\n--- NEW INITIAL POSE ---")
+                    print("\n--- NEW INITIAL POSITION ---")
                     xyz0 = input("Enter INITIAL X Y Z (m): ").split()
                     self.x0, self.y0, self.z0 = map(float, xyz0)
-                    
-                    pitch0_deg = float(input("Enter INITIAL pitch angle (degrees): "))
-                    pitch0_rad = np.deg2rad(pitch0_deg)
-                    
-                    q5_0_deg = float(input("Enter INITIAL q5/lamp rotation (degrees): "))
+                    q5_0_deg = float(input("Enter INITIAL q5 (degrees): "))
                     q5_0_rad = np.deg2rad(q5_0_deg)
 
-                    print("\n--- NEW FINAL POSE ---")
+                    print("\n--- NEW FINAL POSITION ---")
                     xyzf = input("Enter FINAL X Y Z (m): ").split()
                     self.xf, self.yf, self.zf = map(float, xyzf)
-                    
-                    pitch_f_deg = float(input("Enter FINAL pitch angle (degrees): "))
-                    pitch_f_rad = np.deg2rad(pitch_f_deg)
-                    
-                    q5_f_deg = float(input("Enter FINAL q5/lamp rotation (degrees): "))
+                    q5_f_deg = float(input("Enter FINAL q5 (degrees): "))
                     q5_f_rad = np.deg2rad(q5_f_deg)
-                    
-                except ValueError:
-                    print("Invalid input, try again.")
+                except:
+                    print("Invalid input")
                     continue
 
                 X0 = np.array([self.x0*1000, self.y0*1000, self.z0*1000])
                 Xf = np.array([self.xf*1000, self.yf*1000, self.zf*1000])
 
-                # Solve IK for both poses
-                print("\nSOLVING IK FOR INITIAL POSE...")
-                q0, conv0 = self.solve_ik_for_pose(X0, pitch0_rad, q5_0_rad, current_q.copy())
-                
-                if not conv0:
-                    print("❌ IK FAILED FOR INITIAL POSE!")
+                print("\nSolving IK for initial...")
+                q0, conv0 = self.solve_ik_for_pose(X0, q5_0_rad, current_q.copy())
+                if not conv0 or q0 is None:
+                    print("❌ IK FAILED")
                     continue
 
-                print("SOLVING IK FOR FINAL POSE...")
-                qf, convf = self.solve_ik_for_pose(Xf, pitch_f_rad, q5_f_rad, q0.copy())
-                
-                if not convf:
-                    print("❌ IK FAILED FOR FINAL POSE!")
+                print("Solving IK for final...")
+                qf, convf = self.solve_ik_for_pose(Xf, q5_f_rad, q0.copy())
+                if not convf or qf is None:
+                    print("❌ IK FAILED")
                     continue
 
-                # Move to new initial position first
+                # Move to new initial first
                 msg = Float64MultiArray()
                 msg.data = q0.tolist()
                 self.joint_pub.publish(msg)
-                print(f"\n→ Moving to new initial position...")
+                print("Moving to new initial...")
                 time.sleep(1.5)
 
                 trajectory = self.compute_trajectory(q0, qf, self.Tf, self.Ts)
                 current_q = q0.copy()
 
             else:
-                print("Invalid choice.")
+                print("Invalid choice")
                 continue
 
-            # Ask about CSV for each trajectory
-            save_option = input("\nSave this trajectory to CSV? (y/n): ").strip().lower()
+            # Save option
+            save_option = input("\nSave trajectory? (y/n): ").strip().lower()
             if save_option == 'y':
                 filename = f"trajectory_{traj_counter}.csv"
                 self.save_trajectory_to_csv(trajectory, filename)
                 traj_counter += 1
 
-            # Execute trajectory
-            print(f"\n{'='*50}")
-            print(f"EXECUTING TRAJECTORY ({len(trajectory)} steps)")
-            print(f"{'='*50}")
+            # Execute
+            print(f"\nExecuting trajectory ({len(trajectory)} steps)...")
             for i, q in enumerate(trajectory):
                 msg = Float64MultiArray()
                 msg.data = q.tolist()
                 self.joint_pub.publish(msg)
                 if i % 10 == 0:
-                    print(f"  Step {i+1}/{len(trajectory)}: {np.round(np.rad2deg(q), 1)}°")
+                    print(f"  Step {i+1}/{len(trajectory)}")
                 time.sleep(self.Ts)
 
-            print(f"✓ Trajectory complete!")
+            print("✓ Complete!")
             current_q = qf.copy()
 
     # ------------------------------------------------------------
     # Cubic polynomial trajectory
     # ------------------------------------------------------------
     def compute_trajectory(self, q0, qf, Tf, Ts):
-        """
-        Generate smooth cubic polynomial trajectory in joint space
-        All 5 joints (including q4 and q5) are interpolated smoothly
-        """
+        """Generate smooth cubic trajectory in joint space"""
         n = len(q0)
         steps = int(Tf / Ts)
 
-        # Zero velocity at start and end
         qdot0 = np.zeros(n)
         qdotf = np.zeros(n)
 
-        # Cubic polynomial coefficients
         c0 = q0
         c1 = qdot0
         c2 = (3*(qf - q0) - (2*qdot0 + qdotf)*Tf) / (Tf**2)

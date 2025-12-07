@@ -56,19 +56,17 @@ class ForwardKinematicsNode(Node):
         theta = [
             -np.pi/2 + q[0],
             -np.pi/2 + q[1],
-            q[2],
-            -np.pi/2 + q[3],
-            np.pi/2 + q[4]
+            q[2]
         ]
-        d = [-l1, 0, 0, 0, -l4-l5]
-        a = [0, l2, l3, 0, 0]
-        alpha = [np.pi/2, np.pi, np.pi, np.pi/2, 0]
+        d = [-l1, 0, 0]
+        a = [0, l2, l3]
+        alpha = [np.pi/2, np.pi, np.pi]
         
         # Initialize transformation matrix
         T = np.eye(4)
         
         # Compute transformation for each joint
-        for i in range(5):
+        for i in range(3):
             ct = np.cos(theta[i])
             st = np.sin(theta[i])
             ca = np.cos(alpha[i])

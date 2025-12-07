@@ -5,7 +5,8 @@ from rclpy.node import Node
 from std_msgs.msg import Float64MultiArray
 from geometry_msgs.msg import Pose
 import numpy as np
-from scipy.optimize import fsolve
+import sympy as sp
+from sympy import symbols, cos, sin, simplify, solve, pi, Eq
 
 # Try importing FK node; fallback if not found
 try:
@@ -74,8 +75,8 @@ class InverseKinematicsNode(Node):
         # Current joint angles
         self.q_current = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
 
-        self.get_logger().info("Inverse Kinematics Node started (Decoupled 3+1+1 DOF IK)")
-        self.get_logger().info("Method: 3-DOF position IK + q4 for pitch + q5 for rotation")
+        self.get_logger().info("Inverse Kinematics Node started (with SYMBOLIC q4 solver)")
+        self.get_logger().info("Mode: Tool ALWAYS pointing DOWN + q5 rotation")
 
     # ------------------------------------------------------------
     # Normalize angles to [-pi, pi]
@@ -122,261 +123,418 @@ class InverseKinematicsNode(Node):
         return T[2, 2]
     
     # ------------------------------------------------------------
-    # Solve for q4 given q1, q2, q3 to achieve target R33
+    # SYMBOLIC q4 solver (from MATLAB approach)
     # ------------------------------------------------------------
-    def solve_q4_for_R33(self, q1, q2, q3, R33_target):
+    def solve_q4_symbolic(self, q1_val, q2_val, q3_val, direction=1.0):
         """
-        Solve for q4 such that R33 = R33_target
-        Similar to MATLAB solve_q4_numeric.m
+        Compute q4 using symbolic R33 expression (MATLAB-style).
+        
+        Args:
+            q1_val, q2_val, q3_val: joint angles in radians
+            direction: desired R33 value (1.0 for down, -1.0 for up)
+            
+        Returns:
+            q4_solution: float, best q4 angle (radians)
+            success: True if solution found
         """
-        def objective(q4):
-            q_full = np.array([q1, q2, q3, q4, 0.0])
-            R33_current = self.get_R33(q_full)
-            return R33_current - R33_target
+        # Define symbolic variable q4
+        q4 = symbols('q4', real=True)
+
+        # Define the symbolic R33 expression (from MATLAB DH derivation)
+        R33 = ((24678615572571482867467662723121*sp.cos(q2_val - pi/2)) /
+            3291009114642412084309938365114701009965471731267159726697218048 +
+            (24678615572571482867467662723121*sp.sin(q3_val)*sp.sin(q2_val - pi/2)) /
+            3291009114642412084309938365114701009965471731267159726697218048 +
+            sp.cos(q4 - pi/2) *
+            ((24678615572571482867467662723121*sp.cos(q2_val - pi/2)) /
+                1645504557321206042154969182557350504982735865633579863348609024 -
+                sp.sin(q3_val)*sp.sin(q2_val - pi/2) -
+                sp.cos(q3_val)*(sp.cos(q2_val - pi/2) -
+                24678615572571482867467662723121 /
+                3291009114642412084309938365114701009965471731267159726697218048) +
+                24678615572571482867467662723121 /
+                3291009114642412084309938365114701009965471731267159726697218048) +
+            sp.sin(q4 - pi/2) *
+            (sp.cos(q3_val)*sp.sin(q2_val - pi/2) -
+                sp.sin(q3_val)*(sp.cos(q2_val - pi/2) -
+                24678615572571482867467662723121 /
+                3291009114642412084309938365114701009965471731267159726697218048)) +
+            (24678615572571482867467662723121*sp.cos(q3_val) *
+                (sp.cos(q2_val - pi/2) -
+                24678615572571482867467662723121 /
+                3291009114642412084309938365114701009965471731267159726697218048)) /
+            3291009114642412084309938365114701009965471731267159726697218048 +
+            24678615572571482867467662723121 /
+            6582018229284824168619876730229402019930943462534319453394436096)
+
+        # Simplify the expression
+        R33_simple = simplify(R33)
         
-        # Try multiple initial guesses
-        guesses = [0.0, 0.3, -0.3, 0.5, -0.5]
-        
-        for guess in guesses:
-            try:
-                q4_solution = fsolve(objective, guess, full_output=True)
-                q4 = q4_solution[0][0]
-                info = q4_solution[1]
-                
-                # Check if solution is valid
-                if info['fvec'][0]**2 < 1e-6:
-                    # Clip to joint limits
-                    q4 = np.clip(q4, self.joint_limits[3, 0], self.joint_limits[3, 1])
-                    return q4, True
-            except:
-                continue
-        
-        # If no solution found, return best guess
-        return 0.0, False
-    
+        # Solve symbolically: R33 = direction
+        try:
+            solutions = solve(Eq(R33_simple, direction), q4, dict=True)
+            
+            if not solutions:
+                self.get_logger().warn("No symbolic solutions found for q4")
+                return 0.0, False
+            
+            # Extract numeric q4 solutions
+            q4_candidates = []
+            for sol in solutions:
+                try:
+                    q4_val = float(sol[q4].evalf())
+                    # Normalize and check limits
+                    q4_val = self.normalize_angles(q4_val)
+                    if self.joint_limits[3, 0] <= q4_val <= self.joint_limits[3, 1]:
+                        q4_candidates.append(q4_val)
+                except:
+                    continue
+            
+            if not q4_candidates:
+                self.get_logger().warn("No valid q4 solutions within joint limits")
+                # Return clipped solution anyway
+                q4_val = float(solutions[0][q4].evalf())
+                q4_val = np.clip(self.normalize_angles(q4_val), 
+                               self.joint_limits[3, 0], self.joint_limits[3, 1])
+                return q4_val, False
+            
+            # Choose q4 closest to 0 (preferred value)
+            q4_solution = min(q4_candidates, key=lambda x: abs(x))
+            
+            # Verify solution
+            q_verify = np.array([q1_val, q2_val, q3_val, q4_solution, 0.0])
+            R33_achieved = self.get_R33(q_verify)
+            error = abs(R33_achieved - direction)
+            
+            if error > 0.1:
+                self.get_logger().warn(
+                    f"Symbolic q4 solution has large error: {error:.4f} "
+                    f"(R33={R33_achieved:.4f}, target={direction:.4f})"
+                )
+            
+            return q4_solution, True
+            
+        except Exception as e:
+            self.get_logger().error(f"Symbolic solver failed: {e}")
+            return 0.0, False
+
     # ------------------------------------------------------------
-    # Convert pitch angle to R33 value
+    # Solve for q4 to keep tool pointing DOWN
     # ------------------------------------------------------------
-    def pitch_to_R33(self, pitch_rad):
+    def solve_q4_pointing_down(self, q1, q2, q3):
         """
-        Convert pitch angle to desired R33 value.
+        Solve for q4 such that the tool points straight down using symbolic solver.
         
-        Pitch convention (tool orientation in X-Z plane):
-        - pitch = -pi/2 (−90°) → tool pointing DOWN → R33 = -1
-        - pitch = 0° → tool pointing FORWARD (+X) → R33 = 0
-        - pitch = pi/2 (+90°) → tool pointing UP → R33 = 1
-        
-        The tool Z-axis direction is:
-        tool_z = [cos(pitch), 0, sin(pitch)]
-        
-        So R33 (Z-component of tool Z-axis) = sin(pitch)
+        Target R33 = 1.0 for pointing down
         """
-        R33 = np.sin(pitch_rad)
-        return R33
-    
-    # ------------------------------------------------------------
-    # Get tool direction from pitch angle
-    # ------------------------------------------------------------
-    def get_tool_direction(self, pitch_rad):
-        """
-        Get tool Z-axis direction vector from pitch angle.
+        R33_target = 1.0
         
-        The tool Z-axis represents the tool's pointing direction.
-        R33 = -cos(pitch) is the Z-component of the tool Z-axis.
+        self.get_logger().info(f"  Solving symbolic q4 for R33={R33_target:.1f}...")
         
-        For a planar robot in X-Z plane with pitch:
-        - pitch = -90° → tool_z = [0, 0, -1] (pointing DOWN)
-        - pitch = 0°   → tool_z = [1, 0, 0] (pointing FORWARD in +X)
-        - pitch = 90°  → tool_z = [0, 0, 1] (pointing UP)
+        # Use symbolic solver
+        q4, success = self.solve_q4_symbolic(q1, q2, q3, direction=R33_target)
         
-        The relationship is:
-        tool_z = [sin(pitch + 90°), 0, -cos(pitch)]
-               = [cos(pitch), 0, -cos(pitch)]  ← This doesn't work either
+        if not success:
+            self.get_logger().warn(f"  Symbolic solver issue, using q4={np.rad2deg(q4):.1f}°")
+        else:
+            self.get_logger().info(f"  ✓ Symbolic q4 solution: {np.rad2deg(q4):.1f}°")
         
-        Actually, if R33 = -cos(pitch), and we want:
-        pitch = -90° → R33 = 0... NO! Let me recalculate.
-        
-        cos(-90°) = 0, so R33 = 0? But we want R33 = -1!
-        
-        Wait, let me check: for pitch = -90°:
-        - We want tool pointing DOWN → tool_z = [0, 0, -1] → R33 = -1
-        - R33 = -cos(pitch) = -cos(-90°) = -0 = 0 ❌ WRONG!
-        
-        The correct formula must be: R33 = sin(pitch)
-        - pitch = -90° → R33 = sin(-90°) = -1 ✓
-        - pitch = 0° → R33 = sin(0°) = 0 ✓
-        - pitch = 90° → R33 = sin(90°) = 1 ✓
-        
-        So: tool_z = [cos(pitch), 0, sin(pitch)]
-        - pitch = -90° → [0, 0, -1] ✓
-        - pitch = 0° → [1, 0, 0] ✓
-        - pitch = 90° → [0, 0, 1] ✓
-        """
-        tool_z = np.array([
-            np.cos(pitch_rad),
-            0,
-            np.sin(pitch_rad)
-        ])
-        return tool_z
-    
-    # ------------------------------------------------------------
-    # Extract pitch from R33
-    # ------------------------------------------------------------
-    def R33_to_pitch(self, R33):
-        """
-        Convert R33 value to pitch angle.
-        R33 = sin(pitch) → pitch = arcsin(R33)
-        """
-        # Clamp R33 to [-1, 1] to avoid numerical issues with arcsin
-        R33_clamped = np.clip(R33, -1.0, 1.0)
-        pitch = np.arcsin(R33_clamped)
-        return pitch
-    
-    # ------------------------------------------------------------
-    # Get current pitch from joint configuration
-    # ------------------------------------------------------------
-    def get_current_pitch(self, q):
-        """Get current pitch by extracting R33 and converting"""
-        R33 = self.get_R33(q)
-        return self.R33_to_pitch(R33)
+        return q4
 
     # ------------------------------------------------------------
     # Solve 3-DOF IK for position only (q1, q2, q3)
     # ------------------------------------------------------------
     def solve_ik_3dof_position(self, wrist_target, q_init):
         """
-        Solve 3-DOF IK for wrist center position.
-        Similar to MATLAB inv_kinematics_numeric_3DOF.m
+        Robust 3-DOF IK for wrist center (q1, q2, q3).
+        Uses damped pseudoinverse with multiple initial guesses.
         """
-        q = q_init[:3].copy()
-        
-        for iteration in range(self.max_iterations):
-            # Forward kinematics for first 3 joints
-            q_full = np.array([q[0], q[1], q[2], 0.0, 0.0])
-            T = self.fk_node.fwd_kinematics(q_full.tolist())
-            wrist_current = T[:3, 3]
-            
-            # Position error
-            error = wrist_current - wrist_target
-            error_norm = np.linalg.norm(error)
-            
-            if error_norm < self.error_tolerance:
-                return q, True
-            
-            # Jacobian and pseudoinverse
-            J = self.jacobian_3dof(q)
-            try:
-                J_inv = np.linalg.pinv(J)
-            except:
-                return q, False
-            
-            # Newton step
-            dq = -J_inv @ error
-            
-            # Limit step size
-            max_step = 0.1
-            dq_norm = np.linalg.norm(dq)
-            if dq_norm > max_step:
-                dq = dq * (max_step / dq_norm)
-            
-            q += dq
-            q = self.apply_joint_limits(q)
-        
-        return q, False
+
+        # Solver params
+        max_iters = self.max_iterations
+        max_step = 0.1
+        tol = self.error_tolerance
+        damp_lambda = 1e-2
+
+        # Multiple initial guesses
+        base_guess = np.array(q_init[:3].copy())
+        guess_list = [
+            base_guess,
+            np.array([0.0, 0.0, 0.0]),
+            np.array([0.0, -0.2, 0.2]),
+            np.array([0.0, 0.3, -0.3]),
+        ]
+
+        best_q = base_guess.copy()
+        best_err = np.inf
+
+        for guess_idx, q0 in enumerate(guess_list):
+            q = q0.copy()
+            q = np.clip(self.normalize_angles(q), 
+                       self.joint_limits[:3,0], self.joint_limits[:3,1])
+
+            for it in range(max_iters):
+                q_full = np.array([q[0], q[1], q[2]])
+                T = self.fk_node.fwd_kinematics(q_full.tolist())
+                wrist_current = T[:3, 3]
+
+                error_vec = wrist_current - wrist_target
+                err_norm = np.linalg.norm(error_vec)
+
+                if err_norm < tol:
+                    self.get_logger().info(
+                        f"  3-DOF converged (guess {guess_idx}, iter {it}): error={err_norm:.3f}mm"
+                    )
+                    return q, True
+
+                # Damped Jacobian
+                J = self.jacobian_3dof(q)
+                JJt = J @ J.T
+                reg = (damp_lambda**2) * np.eye(3)
+                try:
+                    inv_term = np.linalg.inv(JJt + reg)
+                    J_damped_pinv = J.T @ inv_term
+                except:
+                    J_damped_pinv = np.linalg.pinv(J)
+
+                dq = -J_damped_pinv @ error_vec
+
+                # Step limiting
+                dq_norm = np.linalg.norm(dq)
+                if dq_norm > max_step:
+                    dq = dq * (max_step / dq_norm)
+
+                q += dq
+                q = self.apply_joint_limits(q)
+
+            # Check final error
+            final_q_full = np.array([q[0], q[1], q[2], 0.0, 0.0])
+            final_pos = self.fk_node.fwd_kinematics(final_q_full.tolist())[:3, 3]
+            final_err = np.linalg.norm(final_pos - wrist_target)
+
+            if final_err < best_err:
+                best_err = final_err
+                best_q = q.copy()
+
+            if best_err < tol:
+                break
+
+        if best_err < tol:
+            self.get_logger().info(f"  3-DOF best error: {best_err:.3f}mm")
+            return best_q, True
+
+        self.get_logger().warn(f"  3-DOF failed: best error {best_err:.3f}mm")
+        return best_q, False
 
     # ------------------------------------------------------------
-    # Solve full 5-DOF IK (decoupled approach)
+    # Main IK: Position + Always pointing DOWN + q5 rotation
     # ------------------------------------------------------------
-    def solve_ik_full(self, q_init, ee_target, pitch_target, q5_target):
+    def solve_ik_full(self, q_init, ee_target, q5_target):
         """
-        Decoupled IK approach matching MATLAB:
-        1. Compute wrist center from ee_target and pitch_target
-        2. Solve 3-DOF IK for wrist position (q1, q2, q3)
-        3. Solve for q4 to achieve desired pitch (R33 value)
-        4. Set q5 directly
-        """
-        self.get_logger().info(f"Solving decoupled IK:")
-        self.get_logger().info(f"  Target EE: {ee_target} mm")
-        self.get_logger().info(f"  Target pitch: {np.rad2deg(pitch_target):.1f}°")
+        IK matching MATLAB approach with SYMBOLIC q4 solver:
+        1. Solve q1,q2,q3 for wrist center (3-link FK)
+        2. Solve q4 symbolically for R33 = 1.0 (pointing down)
         
-        # Step 1: Compute wrist center position
+        Args:
+            q_init: initial guess for joint angles
+            ee_target: desired end-effector position [x, y, z] in mm
+            q5_target: desired q5 angle (lamp rotation) in radians
+        
+        Returns:
+            q_solution: solved joint angles [q1, q2, q3, q4, q5]
+            success: True if converged
+        """
+        self.get_logger().info("="*60)
+        self.get_logger().info("Solving IK (SYMBOLIC approach: wrist + symbolic q4):")
+        self.get_logger().info(f"  Target EE: [{ee_target[0]:.1f}, {ee_target[1]:.1f}, {ee_target[2]:.1f}] mm")
+        self.get_logger().info(f"  Target q5: {np.rad2deg(q5_target):.1f}°")
+        
+        # Check for singularity
+        radial_dist = np.sqrt(ee_target[0]**2 + ee_target[1]**2)
+        is_near_singularity = radial_dist < 10.0
+        
+        if is_near_singularity:
+            self.get_logger().warn(f"  ⚠ Near singularity (radial dist: {radial_dist:.1f}mm)")
+        
+        # Step 1: Compute wrist center from EE target
         tool_length = self.l4 + self.l5
+        tool_dir_down = np.array([0.0, 0.0, -1.0])
+        wrist_target = ee_target - tool_length * tool_dir_down
         
-        # Tool direction from desired pitch
-        # R33 = -cos(pitch), so tool Z-axis is [sin(pitch), 0, -cos(pitch)]
-        tool_dir = np.array([
-            0,
-            0,
-            -np.cos(pitch_target)
-        ])
+        self.get_logger().info(f"  Wrist target: [{wrist_target[0]:.1f}, {wrist_target[1]:.1f}, {wrist_target[2]:.1f}] mm")
         
-        wrist_target = ee_target - tool_length * tool_dir
-        
-        self.get_logger().info(f"  Wrist target: {wrist_target} mm")
-        self.get_logger().info(f"  Tool direction: {tool_dir}")
-        
-        # Step 2: Solve 3-DOF IK for wrist position
+        # Step 2: Solve 3-DOF IK for wrist center
         q123, success_pos = self.solve_ik_3dof_position(wrist_target, q_init)
         
         if not success_pos:
-            self.get_logger().warn("3-DOF position IK did not converge")
+            self.get_logger().error("  ✗ 3-DOF wrist IK failed!")
             return q_init, False
         
-        self.get_logger().info(f"  3-DOF solution: q1={np.rad2deg(q123[0]):.1f}°, q2={np.rad2deg(q123[1]):.1f}°, q3={np.rad2deg(q123[2]):.1f}°")
+        self.get_logger().info(f"  ✓ 3-DOF solution: q=[{np.rad2deg(q123[0]):.1f}°, {np.rad2deg(q123[1]):.1f}°, {np.rad2deg(q123[2]):.1f}°]")
         
-        # Verify wrist position
-        q_temp = np.array([q123[0], q123[1], q123[2], 0.0, 0.0])
-        T_temp = self.fk_node.fwd_kinematics(q_temp.tolist())
-        wrist_achieved = T_temp[:3, 3]
-        wrist_error = np.linalg.norm(wrist_achieved - wrist_target)
-        self.get_logger().info(f"  Wrist position error: {wrist_error:.3f} mm")
-        
-        # Step 3: Solve for q4 to achieve desired pitch
-        R33_target = self.pitch_to_R33(pitch_target)
-        self.get_logger().info(f"  Target R33: {R33_target:.4f}")
-        
-        q4, success_pitch = self.solve_q4_for_R33(q123[0], q123[1], q123[2], R33_target)
-        
-        if not success_pitch:
-            self.get_logger().warn("q4 solve for pitch did not converge")
-            q4 = 0.0
-        
-        self.get_logger().info(f"  q4 solution: {np.rad2deg(q4):.1f}°")
+        # Step 3: Solve q4 symbolically for R33 = 1.0
+        q4 = self.solve_q4_pointing_down(q123[0], q123[1], q123[2])
         
         # Step 4: Assemble full solution
         q_solution = np.array([q123[0], q123[1], q123[2], q4, q5_target])
         
-        # Verify final solution
+        # Verify solution
         T_final = self.fk_node.fwd_kinematics(q_solution.tolist())
         ee_achieved = T_final[:3, 3]
         ee_error = np.linalg.norm(ee_achieved - ee_target)
         
         R33_achieved = self.get_R33(q_solution)
-        pitch_achieved = self.R33_to_pitch(R33_achieved)
-        pitch_error = abs(pitch_target - pitch_achieved)
+        R33_error = abs(R33_achieved - 1.0)
         
-        self.get_logger().info(f"  Final EE error: {ee_error:.3f} mm")
-        self.get_logger().info(f"  Achieved pitch: {np.rad2deg(pitch_achieved):.1f}° (error: {np.rad2deg(pitch_error):.2f}°)")
-        self.get_logger().info(f"  Achieved R33: {R33_achieved:.4f}")
+        self.get_logger().info("="*60)
+        self.get_logger().info("VERIFICATION:")
+        self.get_logger().info(f"  EE error: {ee_error:.3f} mm")
+        self.get_logger().info(f"  R33 achieved: {R33_achieved:.4f} (target: 1.0000, error: {R33_error:.4f})")
+        self.get_logger().info(f"  Final joints: {np.round(np.rad2deg(q_solution), 1)}°")
         
-        # Check convergence
-        success = ee_error < 5.0 and pitch_error < np.deg2rad(5.0)
-        
-        if success:
-            self.get_logger().info("✓ Decoupled IK converged successfully!")
+        # Success criteria
+        if is_near_singularity:
+            wrist_achieved_check = self.fk_node.fwd_kinematics([q123[0], q123[1], q123[2], 0, 0])[:3, 3]
+            wrist_error = np.linalg.norm(wrist_achieved_check - wrist_target)
+            success = wrist_error < 5.0
+            if success:
+                self.get_logger().info(f"✓ IK CONVERGED (singularity: wrist_err={wrist_error:.3f}mm)")
+            else:
+                self.get_logger().warn(f"⚠ IK FAILED (singularity: wrist_err={wrist_error:.3f}mm)")
         else:
-            self.get_logger().warn(f"⚠ Decoupled IK partial success (ee_err={ee_error:.2f}mm, pitch_err={np.rad2deg(pitch_error):.1f}°)")
+            success = ee_error < 5.0 and R33_achieved > 0.90
+            if success:
+                self.get_logger().info("✓ IK CONVERGED SUCCESSFULLY!")
+            else:
+                self.get_logger().warn(f"⚠ IK PARTIAL SUCCESS")
         
+        self.get_logger().info("="*60)
         return q_solution, success
+    
+    # ------------------------------------------------------------
+    # Solve 3-DOF IK for EE position (not wrist center!)
+    # ------------------------------------------------------------
+    def solve_ik_3dof_ee_position(self, ee_target, q_init, q5_val):
+        """
+        Solve 3-DOF IK for END-EFFECTOR position (not wrist).
+        With q4=0, q5=q5_val fixed.
+        """
+        # Reachability check
+        radial = np.hypot(ee_target[0], ee_target[1])
+        z_rel = ee_target[2] + self.l1
+        d = np.hypot(radial, z_rel)
+        
+        min_r = abs(self.l2 - self.l3) 
+        max_r = self.l2 + self.l3 + self.l4 + self.l5
+        
+        if d < min_r or d > max_r:
+            self.get_logger().warn(
+                f"EE target may be unreachable (distance {d:.2f} mm)"
+            )
+        
+        # Solver params
+        max_iters = self.max_iterations
+        max_step = 0.1
+        tol = self.error_tolerance
+        damp_lambda = 1e-2
+
+        base_guess = np.array(q_init[:3].copy())
+        
+        # Special case: if target is near home position, use home as guess
+        if np.linalg.norm(ee_target - np.array([0, 0, -403.9])) < 10:
+            guess_list = [
+                np.array([0.0, 0.0, 0.0]),
+                base_guess,
+                np.array([0.0, -0.1, 0.1]),
+                np.array([0.0, 0.1, -0.1]),
+            ]
+        else:
+            guess_list = [
+                base_guess,
+                np.array([0.0, 0.0, 0.0]),
+                np.array([0.0, -0.2, 0.2]),
+                np.array([0.0, 0.3, -0.3]),
+            ]
+
+        best_q = base_guess.copy()
+        best_err = np.inf
+
+        for guess_idx, q0 in enumerate(guess_list):
+            q = q0.copy()
+            q = np.clip(self.normalize_angles(q), 
+                       self.joint_limits[:3,0], self.joint_limits[:3,1])
+
+            prev_err = np.inf
+            for it in range(max_iters):
+                q_full = np.array([q[0], q[1], q[2], 0.0, q5_val])
+                T = self.fk_node.fwd_kinematics(q_full.tolist())
+                ee_current = T[:3, 3]
+
+                error_vec = ee_current - ee_target
+                err_norm = np.linalg.norm(error_vec)
+
+                if err_norm < tol:
+                    self.get_logger().info(
+                        f"  3-DOF EE converged (guess {guess_idx}, iter {it}): error={err_norm:.3f}mm"
+                    )
+                    return q, True
+                
+                if it > 0 and abs(err_norm - prev_err) < 1e-6:
+                    break
+                prev_err = err_norm
+
+                # Numerical Jacobian for EE position w.r.t. q1, q2, q3
+                epsilon = 1e-6
+                J = np.zeros((3, 3))
+                for i in range(3):
+                    q_pert = q.copy()
+                    q_pert[i] += epsilon
+                    q_full_pert = np.array([q_pert[0], q_pert[1], q_pert[2], 0.0, q5_val])
+                    ee_pert = self.fk_node.fwd_kinematics(q_full_pert.tolist())[:3, 3]
+                    J[:, i] = (ee_pert - ee_current) / epsilon
+
+                JJt = J @ J.T
+                reg = (damp_lambda**2) * np.eye(3)
+                try:
+                    inv_term = np.linalg.inv(JJt + reg)
+                    J_damped_pinv = J.T @ inv_term
+                except:
+                    J_damped_pinv = np.linalg.pinv(J)
+
+                dq = -J_damped_pinv @ error_vec
+
+                dq_norm = np.linalg.norm(dq)
+                if dq_norm > max_step:
+                    dq = dq * (max_step / dq_norm)
+
+                q += dq
+                q = self.apply_joint_limits(q)
+
+            # Check final error
+            final_q_full = np.array([q[0], q[1], q[2], 0.0, q5_val])
+            final_pos = self.fk_node.fwd_kinematics(final_q_full.tolist())[:3, 3]
+            final_err = np.linalg.norm(final_pos - ee_target)
+
+            if final_err < best_err:
+                best_err = final_err
+                best_q = q.copy()
+
+            if best_err < tol:
+                break
+
+        if best_err < 10.0:
+            self.get_logger().info(f"  3-DOF EE best error: {best_err:.3f}mm (acceptable)")
+            return best_q, True
+
+        self.get_logger().warn(f"  3-DOF EE failed: best error {best_err:.3f}mm")
+        return best_q, False
 
     # ------------------------------------------------------------
-    # Solve IK for pose (simplified interface)
+    # Simplified interface (for compatibility)
     # ------------------------------------------------------------
-    def solve_ik_for_pose(self, ee_pos, pitch, q5, q_init):
-        """
-        Main IK interface
-        """
-        return self.solve_ik_full(q_init, ee_pos, pitch, q5)
+    def solve_ik_for_pose(self, ee_pos, q5, q_init):
+        """Simplified interface: position + q5 only (always points down)"""
+        return self.solve_ik_full(q_init, ee_pos, q5)
 
 
 def main(args=None):
