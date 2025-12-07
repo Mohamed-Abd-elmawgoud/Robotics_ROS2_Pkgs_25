@@ -12,7 +12,7 @@ class UserInputPublisher(Node):
         super().__init__('user_input_publisher')
 
         # Publishers
-        self.pub_angles = self.create_publisher(Float64MultiArray, '/joint_angles', 10)
+        self.pub_angles = self.create_publisher(Float64MultiArray, '/joint_angles_out', 10)
         self.pub_velocities = self.create_publisher(Float64MultiArray, '/desired_velocities', 10)
         self.pub_position = self.create_publisher(Point, '/desired_position', 10)
 
