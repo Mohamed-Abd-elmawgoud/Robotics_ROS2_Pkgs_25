@@ -185,7 +185,7 @@ class TaskSpaceTrajectoryNode(Node):
 
             # Solve IK for initial position
             if first_trajectory:
-                q_guess = np.zeros(5)
+                q_guess = np.array([-np.pi/3, -np.pi/3, -np.pi/3, 0, 0])  # Some reasonable guess
                 q0, conv0 = self.solve_ik_for_pose(X0, q5_0_rad, q_guess)
                 if not conv0 or q0 is None:
                     print("❌ IK FAILED FOR INITIAL POSITION")

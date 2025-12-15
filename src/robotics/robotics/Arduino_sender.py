@@ -12,9 +12,9 @@ class SimpleSerialTransmitter(Node):
 
         self.declare_parameter("port", "/dev/ttyACM0")
         self.declare_parameter("baudrate", 115200)
-        # self.declare_parameter("csv_file", "pickup_traj.csv")
-        self.declare_parameter("csv_file", "trajectory_2.csv")
-        self.declare_parameter("send_interval", 0.05)
+        self.declare_parameter("csv_file", "home_to_pick.csv")
+        # self.declare_parameter("csv_file", "Pick_up.csv")
+        self.declare_parameter("send_interval", 0.1)
 
         self.port_ = self.get_parameter("port").value
         self.baudrate_ = self.get_parameter("baudrate").value
